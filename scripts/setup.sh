@@ -139,9 +139,16 @@ step_gamemode() {
 step_webhelper() {
     log "Steam: steamwebhelper wrapper (CEF with GPU off in one process, fixes black Steam windows)"
     local cef="$STEAM_DIR/bin/cef/cef.win64" w="$ROOT/tools/webhelper"
-    [ -f "$cef/steamwebhelper_real.exe" ] || mv "$cef/steamwebhelper.exe" "$cef/steamwebhelper_real.exe"
+    # Build the wrapper regardless; it's cheap and lets later runs skip to the swap.
     [ "$w/steamwebhelper.exe" -nt "$w/steamwebhelper.c" ] ||
         x86_64-w64-mingw32-gcc -O2 -municode -o "$w/steamwebhelper.exe" "$w/steamwebhelper.c"
+    # If Steam hasn't bootstrapped yet, cef/ or cef/steamwebhelper.exe won't exist. Defer.
+    if [ ! -f "$cef/steamwebhelper_real.exe" ] && [ ! -f "$cef/steamwebhelper.exe" ]; then
+        echo "  steamwebhelper.exe not downloaded yet; launch Steam once with ./cs2mac steam,"
+        echo "  log in and let it finish updating, then re-run: ./scripts/setup.sh webhelper"
+        return 0
+    fi
+    [ -f "$cef/steamwebhelper_real.exe" ] || mv "$cef/steamwebhelper.exe" "$cef/steamwebhelper_real.exe"
     cmp -s "$w/steamwebhelper.exe" "$cef/steamwebhelper.exe" || cp "$w/steamwebhelper.exe" "$cef/steamwebhelper.exe"
 }
 

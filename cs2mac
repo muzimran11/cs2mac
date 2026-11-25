@@ -47,8 +47,11 @@ case "$cmd" in
     mkdir -p "$ROOT/build/logs"
     # Steam updates replace steamwebhelper.exe; put the wrapper back (and keep the new real helper)
     cef="$STEAM_DIR/bin/cef/cef.win64"
-    if ! cmp -s "$ROOT/tools/webhelper/steamwebhelper.exe" "$cef/steamwebhelper.exe"; then
-        [ "$(stat -f%z "$cef/steamwebhelper.exe")" -gt 1000000 ] && mv "$cef/steamwebhelper.exe" "$cef/steamwebhelper_real.exe"
+    # Only swap in the webhelper wrapper once Steam has bootstrapped and actually downloaded
+    # its real steamwebhelper.exe. On the very first launch the CEF directory is empty or
+    # missing; let Steam fetch it, and this block will run on the next ./cs2mac steam.
+    if [ -f "$cef/steamwebhelper.exe" ] && ! cmp -s "$ROOT/tools/webhelper/steamwebhelper.exe" "$cef/steamwebhelper.exe"; then
+        [ "$(stat -f%z "$cef/steamwebhelper.exe" 2>/dev/null || echo 0)" -gt 1000000 ] && mv "$cef/steamwebhelper.exe" "$cef/steamwebhelper_real.exe"
         bash "$ROOT/scripts/setup.sh" webhelper >/dev/null
     fi
     (cd "$STEAM_DIR" && nohup "$WINE" steam.exe -silent -noverifyfiles "$@" > "$ROOT/build/logs/steam.log" 2>&1 &)
