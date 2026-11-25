@@ -42,11 +42,18 @@ D3DMetal otherwise gets. `docs/ARCHITECTURE.md` walks through it.
 
 ```sh
 git clone https://github.com/PierreAndreis/cs2mac && cd cs2mac
-./cs2mac setup        # downloads Wine, MoltenVK, DXVK, Steam; builds the patched bits; creates the prefix
-./cs2mac steam        # opens Steam; log in, install Counter-Strike 2
-./cs2mac play         # launches CS2 on the d3dmetal backend, 1280x720 windowed
-./cs2mac bench all    # benchmarks the three backends back to back
+./cs2mac setup              # downloads Wine, MoltenVK, DXVK, Steam; builds the patched bits; creates the prefix
+./cs2mac steam              # first launch: log in, let Steam finish updating itself, then quit it
+./scripts/setup.sh webhelper   # swaps in the CEF webhelper wrapper now that Steam downloaded the real one
+./cs2mac steam              # install Counter-Strike 2 (Steam windows render correctly from here on)
+./cs2mac play               # launches CS2 on the d3dmetal backend, 1280x720 windowed
+./cs2mac bench all          # benchmarks the three backends back to back
 ```
+
+The extra `setup.sh webhelper` step is only needed on a fresh prefix: Steam ships
+`steamwebhelper.exe` on first login, and the wrapper that fixes black Steam windows can only be
+installed once that file exists. After that it is a no-op and `./cs2mac steam` keeps the wrapper
+in place across Steam auto-updates.
 
 `./cs2mac play dxvk 1920x1080` picks another backend and resolution. `docs/USAGE.md` has every
 subcommand, `docs/TUNING.md` the knobs and what they did.
