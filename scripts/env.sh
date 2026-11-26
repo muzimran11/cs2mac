@@ -57,11 +57,13 @@ fi
 # there is no supported CLI to raise QoS above the inherited default. nice -n negative does bias
 # scheduling on Darwin a little. Opt-in with CS2MAC_NICE=1 (off by default because Steam already
 # runs at user-initiated QoS and raising it with nice has small, workload-dependent effect).
+# Default to 'env' as a no-op wrapper so "${CS2MAC_QOS_WRAPPER[@]}" is always safe under set -u.
 if [ "${CS2MAC_NICE:-0}" = 1 ]; then
     CS2MAC_QOS_WRAPPER=(nice -n -5)
 else
-    CS2MAC_QOS_WRAPPER=()
+    CS2MAC_QOS_WRAPPER=(env)
 fi
+export CS2MAC_QOS_WRAPPER
 
 # Hybrid arm64 Wine (experimental). Built by './cs2mac setup wine_arm64'; opt in per-launch with
 # CS2MAC_WINE_ARM64=1. The PE side (CS2.exe, D3DMetal) stays x86_64 under Rosetta; the Unix side
