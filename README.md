@@ -117,7 +117,7 @@ Set these before `./cs2mac play` / `./cs2mac play-logged` to change behavior:
 | `CS2MAC_ASYNC_COMMIT`  | 0       | `1` sets `D3DM_ENABLE_ASYNC_COMMIT=1` |
 | `CS2MAC_MULTITHREADED` | 0       | `1` sets `D3DM_MULTITHREADED_INTERFACE_ENABLE=1` |
 | `CS2MAC_MIMALLOC`      | 0       | `1` injects mimalloc into the Wine host via `DYLD_INSERT_LIBRARIES` (install with `./cs2mac setup deps`) |
-| `CS2MAC_NICE`          | 0       | `1` wraps launch in `nice -n -5` (small scheduler bias on Darwin) |
+| `CS2MAC_NICE`          | 0       | `1` wraps launch in `nice -n -5`. See *Work in progress* below: P-core pinning is not functional yet. |
 | `CS2MAC_WINE_ARM64`    | 0       | `1` uses the experimental hybrid arm64 Wine built by `./cs2mac setup wine_arm64` (Unix side native arm64, PE side stays x86_64) |
 | `CS2MAC_DIRECT`        | 0       | `1` launches `cs2.exe` directly instead of through Steam. Keeps Wine stderr visible (crash debugging). Disables VAC. |
 | `CS2MAC_FORCE_WARMUP`  | 0       | `1` re-runs warmup even if the map's mark file exists |
@@ -142,6 +142,18 @@ for d in build/sessions/*/; do echo "=== $d"; cat "$d/summary.txt" 2>/dev/null; 
 
 VAC-secure matchmaking works because the launch still goes through `steam.exe -applaunch 730`.
 The OCR sampler needs Screen Recording permission for the terminal (see Requirements).
+
+## Work in progress
+
+**P-core pinning is not functional yet.** The intent was to bias Wine's hot threads onto the M4
+Air's 4 P-cores (vs its 6 E-cores) under contention. First attempt used `taskpolicy -c
+user-interactive`, which macOS rejects (only `utility` and `background` are valid `-c` clamps,
+and both DEMOTE). `CS2MAC_NICE=1` wrapping in `nice -n -5` is in as a placeholder but Darwin
+mostly ignores `nice` for scheduling decisions. There is no supported CLI knob on macOS that
+raises QoS above the inherited default; the right fix likely needs the game threads themselves
+to call `pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0)`, which means either a
+dylib injected via `DYLD_INSERT_LIBRARIES` or a small patch in Wine's thread start hooks.
+Contributions welcome.
 
 ## Experimental: hybrid arm64 Wine
 
