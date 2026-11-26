@@ -9,6 +9,8 @@
 #   cs2mac warmup [map] [backend] [WxH]
 #                                     compile every pipeline on the map once so the first real
 #                                     round doesn't stutter (idempotent per map + binaries)
+#   cs2mac play-logged [backend] [WxH]
+#                                     like play, but logs fps every 5 s to build/sessions/<ts>/
 #   cs2mac backend [name]             show or switch the D3D11 backend (wined3d | dxvk | d3dmetal)
 #   cs2mac status                     what is installed, running and selected
 #   cs2mac stop                       kill CS2, Steam and the wineserver
@@ -73,6 +75,10 @@ case "$cmd" in
     for x in "${list[@]}"; do select_backend "$x"; bash "$ROOT/scripts/bench.sh" "$x" "$secs" "$res"; done
     echo "results: build/bench/*.txt" ;;
   warmup) exec bash "$ROOT/scripts/warmup.sh" "$@" ;;
+  play-logged)
+    b="${1:-$DEFAULT_BACKEND}"; res="${2:-1920x1080}"; shift $(( $# > 2 ? 2 : $# ))
+    need_steam; select_backend "$b"
+    exec bash "$ROOT/scripts/play-logged.sh" "$b" "$res" "$@" ;;
   backend)
     [ $# -gt 0 ] && select_backend "$1"
     bash "$ROOT/scripts/backend.sh" status ;;
