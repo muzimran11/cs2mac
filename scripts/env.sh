@@ -53,11 +53,12 @@ if [ "${CS2MAC_MIMALLOC:-0}" = 1 ]; then
     done
 fi
 
-# Raise the Wine process tree to user-interactive QoS so macOS schedules it on the P-cores. On an
-# M4 Air with 4 P-cores and 6 E-cores the default (user-initiated via Steam) can land threads on
-# E-cores under contention. Opt-out with CS2MAC_QOS=0.
-if [ "${CS2MAC_QOS:-1}" = 1 ] && command -v taskpolicy >/dev/null 2>&1; then
-    CS2MAC_QOS_WRAPPER=(taskpolicy -c user-interactive)
+# P-core bias wrapper. taskpolicy -c only accepts 'utility' or 'background' on macOS (both DEMOTE);
+# there is no supported CLI to raise QoS above the inherited default. nice -n negative does bias
+# scheduling on Darwin a little. Opt-in with CS2MAC_NICE=1 (off by default because Steam already
+# runs at user-initiated QoS and raising it with nice has small, workload-dependent effect).
+if [ "${CS2MAC_NICE:-0}" = 1 ]; then
+    CS2MAC_QOS_WRAPPER=(nice -n -5)
 else
     CS2MAC_QOS_WRAPPER=()
 fi
