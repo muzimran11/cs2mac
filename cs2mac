@@ -6,6 +6,9 @@
 #   cs2mac play  [backend] [WxH]      launch CS2 (default backend: d3dmetal, 1280x720 windowed)
 #   cs2mac bench [backend|all] [secs] [WxH]
 #                                     benchmark on the de_dust2 workshop map, results in build/bench
+#   cs2mac warmup [map] [backend] [WxH]
+#                                     compile every pipeline on the map once so the first real
+#                                     round doesn't stutter (idempotent per map + binaries)
 #   cs2mac backend [name]             show or switch the D3D11 backend (wined3d | dxvk | d3dmetal)
 #   cs2mac status                     what is installed, running and selected
 #   cs2mac stop                       kill CS2, Steam and the wineserver
@@ -69,6 +72,7 @@ case "$cmd" in
     [ "$b" = all ] && list=(d3dmetal dxvk vulkan) || list=("$b")
     for x in "${list[@]}"; do select_backend "$x"; bash "$ROOT/scripts/bench.sh" "$x" "$secs" "$res"; done
     echo "results: build/bench/*.txt" ;;
+  warmup) exec bash "$ROOT/scripts/warmup.sh" "$@" ;;
   backend)
     [ $# -gt 0 ] && select_backend "$1"
     bash "$ROOT/scripts/backend.sh" status ;;
