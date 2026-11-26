@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Like ./cs2mac play, but samples cl_showfps 2 overlay every 5 seconds and writes a CSV
-# plus a summary when the game exits. Output under build/sessions/<timestamp>/.
+# Launch CS2 via Steam -applaunch (so VAC-secure servers work) and sample cl_showfps 2 every 5 s
+# until cs2.exe exits. Writes CSV + summary under build/sessions/<timestamp>/.
 # Usage: play-logged.sh [backend] [WxH] [cs2 args...]
+#
+# Wine stderr isn't captured here: Steam owns the process tree and swallows it. For a crash
+# investigation run CS2MAC_DIRECT=1 ./cs2mac play ... instead; that loses VAC but keeps stderr.
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/env.sh"
@@ -11,24 +14,26 @@ ts=$(date +%Y%m%d-%H%M%S)
 sess="$ROOT/build/sessions/$backend-$res-$ts"
 mkdir -p "$sess"
 csv="$sess/fps.csv"
-play_log="$sess/play.log"
-
-echo "[play-logged] session dir: $sess"
+echo "[play-logged] session dir: $sess (VAC enabled, via Steam -applaunch)"
 echo "t,now,f60,f240,f1000,min_ms,max_ms" > "$csv"
 
-# Launch the game with Wine stderr captured. CS2MAC_DIRECT=1 keeps cs2.exe in the foreground
-# of this shell so we can see its PID and clean up when it exits.
-export CS2MAC_DIRECT=1 CS2MAC_BACKEND="$backend"
-export CS2MAC_WIDTH="${res%x*}" CS2MAC_HEIGHT="${res#*x}"
-export WINEDEBUG="${WINEDEBUG:-+seh,+dbghelp}"
+# Make sure no stale cs2.exe is running, so pgrep matches the one we launch.
+pkill -f "^cs2.exe" 2>/dev/null; sleep 1
 
-"$ROOT/scripts/run-cs2.sh" +cl_showfps 2 +fps_max 0 "$@" > "$play_log" 2>&1 &
-game_pid=$!
-echo "[play-logged] cs2 pid=$game_pid, logging fps to $csv (Ctrl+C to stop logger; game keeps running)"
+export CS2MAC_BACKEND="$backend" CS2MAC_WIDTH="${res%x*}" CS2MAC_HEIGHT="${res#*x}"
+# Fire the Steam launch and return immediately; Steam spawns cs2.exe as its own child.
+CS2MAC_DIRECT=0 "$ROOT/scripts/run-cs2.sh" +cl_showfps 2 +fps_max 0 "$@" > "$sess/launch.log" 2>&1 &
+# Wait up to 60 s for Steam to actually spawn cs2.exe.
+for i in $(seq 1 60); do
+    pid=$(pgrep -f "^cs2.exe" | head -1)
+    [ -n "$pid" ] && break
+    sleep 1
+done
+[ -z "${pid:-}" ] && { echo "[play-logged] cs2.exe never started; see $sess/launch.log"; exit 1; }
+echo "[play-logged] cs2 pid=$pid; sampling to $csv until the game exits (Ctrl+C stops the logger)"
 
-# Background OCR sampler. Dies when the game exits.
 (
-    while kill -0 $game_pid 2>/dev/null; do
+    while kill -0 $pid 2>/dev/null; do
         shot="$sess/frame.png"
         WINSHOT_NAME="Counter" "$ROOT/scripts/winshot" "$shot" > /dev/null 2>&1 || break
         r=$("$ROOT/scripts/fpsread" "$shot" 2>/dev/null || echo "")
@@ -39,12 +44,12 @@ echo "[play-logged] cs2 pid=$game_pid, logging fps to $csv (Ctrl+C to stop logge
 ) &
 sampler_pid=$!
 
-trap 'kill $sampler_pid 2>/dev/null; echo; echo "[play-logged] stopping logger"' INT TERM
-wait $game_pid
+trap 'kill $sampler_pid 2>/dev/null; echo; echo "[play-logged] logger stopped (game still running)"' INT TERM
+# Wait on cs2.exe directly via a polling loop (we don't own the PID, so wait doesn't work).
+while kill -0 $pid 2>/dev/null; do sleep 2; done
 kill $sampler_pid 2>/dev/null
 wait $sampler_pid 2>/dev/null || true
 
-# Summary
 python3 - "$csv" "$backend" "$res" <<'PY' | tee "$sess/summary.txt"
 import csv, statistics, sys
 rows = list(csv.DictReader(open(sys.argv[1])))
