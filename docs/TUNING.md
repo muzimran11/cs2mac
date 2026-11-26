@@ -95,3 +95,51 @@ clamped to the screen in points, so the pixel size is what the GPU renders.
 | 1280x720 | 116.8 | 113.3 | 1031.6 |
 
 The GPU is the limit above 1080p; at 720p the CPU (Rosetta) is. For competitive play pick 1920x1080.
+
+## M4 Air experiments (2026-11-25)
+
+Four changes landed together on branch WebhelperFIX targeting a 1080p 85+ fps median on an
+M4 Air (10-core GPU, 16 GB unified, 4P/6E CPU). Measure each in isolation with
+`./cs2mac bench d3dmetal 120 1920x1080`.
+
+### MetalFX spatial upscaling (default on at 1920+)
+
+`D3DM_ENABLE_METALFX=1` is now auto-set at CS2MAC_WIDTH >= 1920. On smaller Apple GPUs the
+regime at 1080p flips from CPU-bound (as on M2 Max at 720p, where MetalFX moved nothing)
+to GPU-bound, and a spatial upscale from ~900p should give roughly a 20-40% median uplift.
+Opt-out with CS2MAC_METALFX=0. Watch for ghosting on muzzle flash edges and scope reticle;
+if it is unacceptable, fall back to CS2 internal FSR via the game's video settings.
+
+### P-core QoS
+
+Wine is launched under `taskpolicy -c user-interactive` so macOS biases scheduling onto
+the P-cores. On an M4 Air with only 4 P-cores and 6 E-cores the default (user-initiated,
+inherited from Steam) can land hot threads on E-cores under contention, which hurts p5
+more than median. Opt-out with CS2MAC_QOS=0.
+
+### mimalloc
+
+`CS2MAC_MIMALLOC=1` inserts Microsoft's mimalloc as the Wine host process allocator via
+DYLD_INSERT_LIBRARIES. Source 2 is allocator-heavy on map load and particle creation;
+mimalloc typically beats the system allocator by 5-10% on alloc-heavy workloads. Off by
+default because DYLD_INSERT_LIBRARIES interacts with code signing on some setups;
+if the game refuses to launch with it on, that is why.
+
+### Shader warmup
+
+`./cs2mac warmup [map]` precompiles every D3DMetal pipeline the map is likely to hit
+(every weapon fired at multiple surface materials, every scope, every post-process path)
+and stamps a mark file. D3DMetal persists compiled pipelines to its on-disk cache, so
+this pays forward across sessions until a binary changes. Expect the first warmup on a
+map to take 60-120 seconds; subsequent `./cs2mac play` sessions on that map should show
+flat p5 from the start instead of the 100+ ms first-session stalls documented in the
+shoot-test section above.
+
+### Hybrid arm64 Wine (experimental, build it yourself)
+
+`./cs2mac setup wine_arm64` builds a second Wine configure with an aarch64 Unix side
+alongside the x86_64 PE side. The win is making the Wine loader, ntdll.so, winemac.so
+and wineserver native arm64 so syscalls and wineserver round trips do not pay Rosetta.
+The game loop and D3DMetal stay x86_64. CS2MAC_WINE_ARM64=1 switches to the new
+binaries for the next launch. Flagged experimental because the local patches may need
+light adjustment against aarch64 paths; iterate against the build log.
