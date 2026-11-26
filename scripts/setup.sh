@@ -2,7 +2,7 @@
 # One-shot setup for cs2mac. Idempotent: every step checks for its output first.
 #
 #   setup.sh            run every step
-#   setup.sh <step>...  run only the named steps (deps wine dxvk moltenvk ntdll winemac gptk gamemode tools prefix steam webhelper steamcfg)
+#   setup.sh <step>...  run only the named steps (deps wine dxvk moltenvk ntdll winemac gptk gamemode tools prefix steam webhelper steamcfg wine_arm64)
 #
 # Nothing proprietary is redistributed: Wine, DXVK and MoltenVK are fetched from
 # their upstream releases, Steam from Valve, and D3DMetal comes from Apple's
@@ -89,6 +89,68 @@ build_unix_lib() { # <make target dir> <so name>
     mkdir -p "$ROOT/build/ntdll-orig/x86_64-unix"
     [ -f "$ROOT/build/ntdll-orig/x86_64-unix/$2" ] || cp "$dst" "$ROOT/build/ntdll-orig/x86_64-unix/$2"
     cp "$V/wine-build/dlls/$1/$2" "$dst" && sign "$dst"
+}
+
+# --- hybrid arm64 Wine (experimental) -----------------------------------------
+# Builds a second Wine configure with an aarch64 Unix side alongside the x86_64 PE side.
+# Reasoning: on the current build, the whole Wine process (loader, ntdll.so, winemac.so,
+# wineserver) runs under Rosetta because configure was --enable-archs=x86_64,i386. That
+# means every syscall, every wineserver round trip, every scheduler interaction eats a
+# Rosetta transition. Game code stays x86_64 either way (CS2 and D3DMetal are x86_64 PE);
+# the win is making the Unix half and wineserver native.
+#
+# Status: experimental. Expect to iterate. If your build fails, the log it died in is the
+# one to open first; patches may need tweaking against the aarch64 code paths.
+
+step_wine_arm64() {
+    log "hybrid arm64 Wine: aarch64 Unix side + x86_64 PE side (EXPERIMENTAL)"
+    [ -f "$V/wine-src/VERSION" ] || {
+        fetch "$WINE_SRC_URL" "$DL/wine-11.17.tar.xz"
+        mkdir -p "$V/wine-src" && tar -xJf "$DL/wine-11.17.tar.xz" -C "$V/wine-src" --strip-components=1
+    }
+    local BUILD="$V/wine-build-arm64"
+    if [ ! -f "$BUILD/config.status" ]; then
+        rm -rf "$BUILD" && cp -R "$V/wine-src" "$BUILD"
+        (cd "$BUILD" &&
+            patch -p1 < "$ROOT/patches/wine-macos-single-gsbase.patch" &&
+            patch -p1 < "$ROOT/patches/wine-macos-gptk-d3dmetal.patch" &&
+            patch -p1 < "$ROOT/patches/wine-fast-udp-sockets.patch") || {
+                echo "patches did not apply cleanly against wine-build-arm64; inspect $BUILD" >&2
+                echo "the single-gsbase patch is arm64-specific and should apply; the GPTK patch may need adjustment" >&2
+                exit 1
+            }
+        (cd "$BUILD" && PATH="/opt/homebrew/opt/bison/bin:$PATH" \
+            ./configure \
+                --enable-archs=aarch64,x86_64,i386 \
+                --without-x --disable-tests --without-freetype --without-gstreamer --without-sdl \
+                --without-gphoto --without-sane --without-usb --without-krb5 --without-cups \
+                --without-dbus --without-gnutls --without-pcap --without-inotify --without-opencl \
+                --without-oss --without-netapi \
+                > "$LOGS/wine-arm64-configure.log" 2>&1) || {
+                    echo "configure failed; see $LOGS/wine-arm64-configure.log" >&2
+                    tail -40 "$LOGS/wine-arm64-configure.log" >&2
+                    exit 1
+                }
+    fi
+    (cd "$BUILD" && PATH="/opt/homebrew/opt/bison/bin:$PATH" make -j"$(sysctl -n hw.ncpu)" \
+        > "$LOGS/wine-arm64-make.log" 2>&1) || {
+            echo "build failed; see $LOGS/wine-arm64-make.log" >&2
+            tail -60 "$LOGS/wine-arm64-make.log" >&2
+            echo "common fixes: install llvm (brew install llvm) for clang-arm64, make sure mingw-w64 covers both archs, re-run 'make -k' to see all failures" >&2
+            exit 1
+        }
+
+    # Stage the result into vendor/wine-arm64/ so env.sh can opt in without disturbing the x86_64 install.
+    local out="$V/wine-arm64"
+    rm -rf "$out" && mkdir -p "$out/bin" "$out/lib/wine"
+    cp "$BUILD/loader/wine" "$out/bin/wine"
+    cp "$BUILD/server/wineserver" "$out/bin/wineserver"
+    cp -R "$BUILD/dlls" "$out/lib/wine/"      # staged, not final layout; env.sh handles paths
+    cp -R "$V/wine-11.17/Wine Devel.app/Contents/Resources/wine/lib/wine/aarch64-unix" \
+        "$out/lib/wine/" 2>/dev/null || true
+    sign "$out/bin/wine"; sign "$out/bin/wineserver"
+    echo "hybrid arm64 Wine built at $out"
+    echo "to use it: CS2MAC_WINE_ARM64=1 ./cs2mac play"
 }
 
 step_ntdll() {

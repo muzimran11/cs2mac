@@ -61,3 +61,13 @@ if [ "${CS2MAC_QOS:-1}" = 1 ] && command -v taskpolicy >/dev/null 2>&1; then
 else
     CS2MAC_QOS_WRAPPER=()
 fi
+
+# Hybrid arm64 Wine (experimental). Built by './cs2mac setup wine_arm64'; opt in per-launch with
+# CS2MAC_WINE_ARM64=1. The PE side (CS2.exe, D3DMetal) stays x86_64 under Rosetta; the Unix side
+# (ntdll.so, winemac.drv.so, wineserver, the Wine loader itself) becomes native aarch64. The win
+# is on syscalls, wineserver round trips, and scheduling: no Rosetta tax on that half.
+if [ "${CS2MAC_WINE_ARM64:-0}" = 1 ] && [ -x "$CS2MAC_ROOT/vendor/wine-arm64/bin/wine" ]; then
+    export WINE="$CS2MAC_ROOT/vendor/wine-arm64/bin/wine"
+    export WINESERVER="$CS2MAC_ROOT/vendor/wine-arm64/bin/wineserver"
+    echo "[cs2mac] using hybrid arm64 Wine (experimental)" >&2
+fi
