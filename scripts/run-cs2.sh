@@ -28,5 +28,5 @@ fps=(+mat_vsync 1 +fps_max 0)
 args=("${api[@]}" -nojoy -novid -condebug "${res[@]}" "${mode[@]}" "${fps[@]}" "$@")
 # Launching cs2.exe directly puts it in insecure mode (no VAC servers). By default hand the launch to
 # the running Steam client instead; CS2MAC_DIRECT=1 keeps the direct launch (bench uses it for logs).
-[ "${CS2MAC_DIRECT:-0}" = 1 ] && exec "$WINE" cs2.exe -steam "${args[@]}"
-exec "$WINE" "$STEAM_DIR/steam.exe" -applaunch 730 "${args[@]}"
+[ "${CS2MAC_DIRECT:-0}" = 1 ] && exec "${CS2MAC_QOS_WRAPPER[@]}" "$WINE" cs2.exe -steam "${args[@]}"
+exec "${CS2MAC_QOS_WRAPPER[@]}" "$WINE" "$STEAM_DIR/steam.exe" -applaunch 730 "${args[@]}"

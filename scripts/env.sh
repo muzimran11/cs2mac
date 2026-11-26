@@ -30,3 +30,34 @@ export CS2MAC_BACKEND="${CS2MAC_BACKEND:-vulkan}"
 
 STEAM_DIR="$WINEPREFIX/drive_c/Program Files (x86)/Steam"
 CS2_DIR="$STEAM_DIR/steamapps/common/Counter-Strike Global Offensive"
+
+# D3DMetal knobs (see docs/TUNING.md). MetalFX pays off when the GPU is the bottleneck, i.e. above
+# about 1080p on the smaller Apple GPUs; default it on at >= 1920 pixels wide if the user did not
+# set it. Async commit and the multithreaded interface are noisy on M2 Max and off by default; try
+# them on an M4 Air with CS2MAC_ASYNC_COMMIT=1 or CS2MAC_MULTITHREADED=1.
+if [ -z "${D3DM_ENABLE_METALFX:-}" ] && [ "${CS2MAC_METALFX:-auto}" != "0" ]; then
+    _w="${CS2MAC_WIDTH:-0}"
+    if [ "${CS2MAC_METALFX:-auto}" = "1" ] || [ "${_w:-0}" -ge 1920 ] 2>/dev/null; then
+        export D3DM_ENABLE_METALFX=1
+    fi
+fi
+[ "${CS2MAC_ASYNC_COMMIT:-0}" = 1 ] && export D3DM_ENABLE_ASYNC_COMMIT=1
+[ "${CS2MAC_MULTITHREADED:-0}" = 1 ] && export D3DM_MULTITHREADED_INTERFACE_ENABLE=1
+
+# mimalloc replaces the system allocator in the Wine host process; CS2 and Wine both do a lot of
+# small allocations and the system allocator is a hot spot. Opt-in via CS2MAC_MIMALLOC=1 after
+# scripts/setup.sh installs it; see docs/TUNING.md.
+if [ "${CS2MAC_MIMALLOC:-0}" = 1 ]; then
+    for _mi in /opt/homebrew/lib/libmimalloc.dylib /usr/local/lib/libmimalloc.dylib; do
+        [ -f "$_mi" ] && export DYLD_INSERT_LIBRARIES="${DYLD_INSERT_LIBRARIES:+$DYLD_INSERT_LIBRARIES:}$_mi" && break
+    done
+fi
+
+# Raise the Wine process tree to user-interactive QoS so macOS schedules it on the P-cores. On an
+# M4 Air with 4 P-cores and 6 E-cores the default (user-initiated via Steam) can land threads on
+# E-cores under contention. Opt-out with CS2MAC_QOS=0.
+if [ "${CS2MAC_QOS:-1}" = 1 ] && command -v taskpolicy >/dev/null 2>&1; then
+    CS2MAC_QOS_WRAPPER=(taskpolicy -c user-interactive)
+else
+    CS2MAC_QOS_WRAPPER=()
+fi
