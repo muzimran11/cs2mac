@@ -31,7 +31,7 @@ step_deps() {
     xcode-select -p >/dev/null 2>&1 || { echo "run: xcode-select --install"; exit 1; }
     x86 /usr/bin/true 2>/dev/null || { echo "run: softwareupdate --install-rosetta --agree-to-license"; exit 1; }
     command -v brew >/dev/null || { echo "install Homebrew first"; exit 1; }
-    brew list bison mingw-w64 cmake >/dev/null 2>&1 || brew install bison mingw-w64 cmake
+    brew list bison mingw-w64 cmake mimalloc >/dev/null 2>&1 || brew install bison mingw-w64 cmake mimalloc
 }
 
 step_wine() {
